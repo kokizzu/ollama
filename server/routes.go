@@ -929,7 +929,8 @@ func (s *Server) ListHandler(c *gin.Context) {
 			}
 		}
 
-		r := api.ListModelResponse{
+		// tag should never be masked
+		models = append(models, api.ListModelResponse{
 			Model:      n.DisplayShortest(),
 			Name:       n.DisplayShortest(),
 			Size:       m.Size(),
@@ -942,16 +943,7 @@ func (s *Server) ListHandler(c *gin.Context) {
 				ParameterSize:     cf.ModelType,
 				QuantizationLevel: cf.FileType,
 			},
-		}
-
-		model, err := GetModel(n.String())
-		if err != nil {
-			slog.Warn("bad model details", "name", n, "error", err)
-		} else {
-			r.Capabilities = model.Capabilities()
-		}
-
-		models = append(models, r)
+		})
 	}
 
 	slices.SortStableFunc(models, func(i, j api.ListModelResponse) int {
@@ -1534,12 +1526,7 @@ func (s *Server) ChatHandler(c *gin.Context) {
 
 	var toolParser *tools.Parser
 	if len(req.Tools) > 0 {
-		toolParser, err = tools.NewParser(m.Template.Template)
-		if err != nil {
-			slog.Error("failed to create tool parser", "error", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-			return
-		}
+		toolParser = tools.NewParser(m.Template.Template, req.Tools)
 	}
 
 	ch := make(chan any)
@@ -1592,6 +1579,7 @@ func (s *Server) ChatHandler(c *gin.Context) {
 					// don't return
 				} else {
 					if r.Done {
+						res.Message.Content = toolParser.Content()
 						ch <- res
 					}
 					return
